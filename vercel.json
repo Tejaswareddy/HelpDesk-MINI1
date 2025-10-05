@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://YOUR_BACKEND.example.com/api/$1"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://YOUR_BACKEND.example.com/admin/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
