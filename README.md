@@ -1,9 +1,14 @@
-HelpDesk Mini
-===============
+# HelpDesk-MINI1
 
-Run: create virtualenv, pip install -r requirements.txt, then run migrations and startserver.
+HelpDesk Mini — a Django + DRF backend (SQLite) providing a ticketing API with SLA timers, threaded comments, optimistic locking, idempotent create, per-user rate-limiting, timeline logging and a minimal single-file frontend for manual testing.
 
-APIs:
+Quick start
+1. Create a virtualenv and activate it.
+2. pip install -r requirements.txt
+3. python manage.py migrate
+4. python manage.py runserver
+
+API (base: /api/)
 - POST /api/auth/register {username,password,role}
 - POST /api/auth/login {username,password} -> {token}
 - POST /api/tickets (Idempotency-Key header) -> create ticket
@@ -12,17 +17,26 @@ APIs:
 - PATCH /api/tickets/:id {version, assignee_id, status} -> optimistic locking
 - POST /api/tickets/:id/comments (Idempotency-Key) {body,parent}
 
-Health & meta:
+Health & meta
 - GET /api/health
 - GET /api/_meta
 - /.well-known/hackathon.json
 
-Test credentials:
-- admin / password (created via seed)
+Test credentials
+- admin / admin123 (created via seed script)
 
-Pagination: use limit and offset. Response: {items, next_offset}
-Idempotency: include header Idempotency-Key
-Rate limit: 60 req/min per user -> 429 {"error":{"code":"RATE_LIMIT"}}
+Notes
+- Pagination: use `limit` and `offset`. Responses use the shape {items, next_offset}.
+- Idempotency: include `Idempotency-Key` on POST requests to make creation idempotent.
+- Rate limiting: middleware returns 429 with {"error":{"code":"RATE_LIMIT"}} when rate limit is exceeded.
 
-Architecture (120 words):
-Backend is Django + DRF with Token auth. Models include Ticket, Comment, TimelineEntry and Profile for roles. API views implement listing with search (title, description, comments), ticket creation with SLA deadline calculation, optimistic locking via a version integer for PATCH operations, and timeline entries for actions. Middleware provides an in-memory idempotency cache and per-minute rate-limiting. Frontend is a minimal React-ready template served by Django; for the hackathon you can extend it into full React SPA that talks to the API. SQLite keeps data local and simple for testing and judge evaluation.
+Architecture (short)
+Backend is Django + Django REST Framework with Token auth. Models include Ticket, Comment and TimelineEntry, and a Profile for roles (agent, user, admin). Key features implemented:
+- Search across title/description/comments
+- SLA deadline calculation on ticket create and a `breached` filter
+- Optimistic locking using a `version` integer on Ticket (PATCH returns 409 on stale updates)
+- Middleware for idempotency (dev cache) and per-minute rate limiting
+- Minimal single-file frontend served from `static/app.js` with server-rendered fallbacks in `templates/`.
+
+For deployment, move the idempotency and rate-limit cache to Redis or another shared cache and secure SECRET_KEY and database credentials via environment variables.
+
