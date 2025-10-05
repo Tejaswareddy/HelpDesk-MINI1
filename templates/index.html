@@ -23,12 +23,80 @@
   <script>
   // Single-file frontend (inlined) — configurable API base
   const API_BASE = (window.__API_BASE__ || '/api');
+  const DEMO_MODE = (typeof window.__API_BASE__ === 'undefined');
 
+  // apiFetch: real fetch when API_BASE provided, otherwise use an in-memory demo backend
   function apiFetch(path, opts={}){
+    opts = opts || {};
     opts.headers = opts.headers || {};
     const token = localStorage.getItem('token');
-    if(token) opts.headers['Authorization'] = 'Token '+token;
-    return fetch(API_BASE + path, opts).then(r => r.json().then(b => ({ok:r.ok, status:r.status, body:b}))); 
+    if(token && !DEMO_MODE) opts.headers['Authorization'] = 'Token '+token;
+
+    if(DEMO_MODE){
+      // Simple in-memory demo backend
+      // State is stored on window so it survives soft reloads
+      window.__demo = window.__demo || { users: [{username:'admin', password:'admin123', token:'demo-admin-token'}], tickets: [], comments: {} };
+      const demo = window.__demo;
+
+      // helper to parse path
+      const url = new URL('http://demo'+path);
+      const parts = url.pathname.split('/').filter(Boolean);
+
+      // POST /auth/login
+      if(path.startsWith('/auth/login') && opts.method === 'POST'){
+        const body = JSON.parse(opts.body || '{}');
+        const u = demo.users.find(x=>x.username===body.username && x.password===body.password);
+        if(u) return Promise.resolve({ok:true, status:200, body:{token:u.token, username:u.username}});
+        return Promise.resolve({ok:false, status:401, body:{error:'invalid'}});
+      }
+
+      // GET /tickets
+      if(path.startsWith('/tickets') && (!opts.method || opts.method==='GET')){
+        const items = demo.tickets.slice().reverse();
+        return Promise.resolve({ok:true, status:200, body:{items, next_offset:null}});
+      }
+
+      // POST /tickets
+      if(path=== '/tickets' && opts.method==='POST'){
+        const body = JSON.parse(opts.body||'{}');
+        const id = crypto.randomUUID();
+        const now = new Date();
+        const sla_minutes = body.sla_minutes||60;
+        const sla_deadline = new Date(now.getTime() + sla_minutes*60000).toISOString();
+        const author = token ? token.replace('demo-','') : 'demo';
+        const ticket = { id, title: body.title||'Untitled', description: body.description||'', status:'open', sla_minutes, sla_deadline, author:{username:author}, comments:[] };
+        demo.tickets.push(ticket);
+        return Promise.resolve({ok:true, status:201, body: ticket});
+      }
+
+      // GET /tickets/:id
+      if(parts[0]==='tickets' && parts.length===2 && (!opts.method || opts.method==='GET')){
+        const id = parts[1];
+        const t = demo.tickets.find(x=>x.id===id);
+        if(!t) return Promise.resolve({ok:false, status:404, body:{error:'not found'}});
+        // attach comments
+        t.comments = demo.comments[id]||[];
+        return Promise.resolve({ok:true, status:200, body:t});
+      }
+
+      // POST /tickets/:id/comments
+      if(parts[0]==='tickets' && parts.length===3 && parts[2]==='comments' && opts.method==='POST'){
+        const id = parts[1];
+        const body = JSON.parse(opts.body||'{}');
+        const comment = { id: crypto.randomUUID(), body: body.body||'', author: { username: token ? token.replace('demo-','') : 'demo' }, created_at: new Date().toISOString() };
+        demo.comments[id] = demo.comments[id]||[];
+        demo.comments[id].push(comment);
+        return Promise.resolve({ok:true, status:201, body:comment});
+      }
+
+      // Fallback demo: health
+      if(path.startsWith('/health')) return Promise.resolve({ok:true, status:200, body:{status:'ok'}});
+
+      return Promise.resolve({ok:false, status:404, body:{error:'not implemented in demo'}});
+    }
+
+    // Real backend
+    return fetch(API_BASE + path, opts).then(r => r.json().then(b => ({ok:r.ok, status:r.status, body:b}))).catch(e=>({ok:false,status:0,body:{error:String(e)}}));
   }
 
   function navigate(path){
