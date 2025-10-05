@@ -15,6 +15,7 @@ env/
 
 # Node
 node_modules/
+static/app.js
 
 # Editor / OS
 .vscode/
